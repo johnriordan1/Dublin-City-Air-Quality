@@ -155,6 +155,13 @@
     }
 
     #map { height: 500px; border-radius: 0.75rem; z-index: 1; }
+
+    #xr-card-wrapper {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      pointer-events: auto;
+    }
   </style>
 </head>
 <body class="bg-[#090d16] text-slate-100 min-h-screen flex flex-col">
@@ -575,6 +582,9 @@
 
     /* ----------------------------------------------------
        3D DATA PILLARS GENERATION (Air Quality Telemetry)
+       Room: 14ft × 14ft ≈ 4.27m × 4.27m
+       Pillars placed at random positions within the room,
+       with a minimum separation to avoid overlap.
     ----------------------------------------------------- */
     function build3DAirQualityVisualisation() {
       // Clear existing children
@@ -583,79 +593,109 @@
       }
       pillarMeshes = [];
 
-      // Base Pedestal
-      const pedestalGeo = new THREE.CylinderGeometry(1.2, 1.25, 0.04, 48);
-      const pedestalMat = new THREE.MeshStandardMaterial({
-        color: 0x0f172a,
-        roughness: 0.3,
-        metalness: 0.8,
+      // Thin floor grid to indicate the room boundary
+      const floorGeo = new THREE.PlaneGeometry(4.27, 4.27, 10, 10);
+      const floorMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        wireframe: true,
         transparent: true,
-        opacity: 0.85
+        opacity: 0.06
       });
-      const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
-      pedestal.position.y = -0.02;
-      pedestal.receiveShadow = true;
-      dataGroup.add(pedestal);
-
-      // Center glowing holographic core
-      const coreGeo = new THREE.SphereGeometry(0.08, 24, 24);
-      const coreMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true });
-      const core = new THREE.Mesh(coreGeo, coreMat);
-      core.position.y = 0.25;
-      dataGroup.add(core);
+      const floor = new THREE.Mesh(floorGeo, floorMat);
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.y = 0.001;
+      dataGroup.add(floor);
 
       // Filter valid monitors
-      const stations = window.allMonitors.filter(m => m.latitude && m.longitude && m.latest_reading).slice(0, 16);
+      const stations = window.allMonitors.filter(m => m.latest_reading).slice(0, 16);
       if (stations.length === 0) return;
 
-      const radius = 0.75;
-      const count = stations.length;
+      // Generate non-overlapping random positions within 14ft room (±1.9m from centre)
+      const HALF = 1.9;
+      const MIN_SEP = 0.55; // min metres between pillar centres
+      const positions = [];
+
+      function tooClose(x, z) {
+        return positions.some(p => Math.hypot(p.x - x, p.z - z) < MIN_SEP);
+      }
+
+      // Use a seeded-like approach so positions stay stable per session
+      const rng = (() => {
+        let seed = stations.length * 31 + 7;
+        return () => {
+          seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+          return ((seed >>> 0) / 0xffffffff);
+        };
+      })();
+
+      for (let i = 0; i < stations.length; i++) {
+        let x, z, attempts = 0;
+        do {
+          x = (rng() * 2 - 1) * HALF;
+          z = (rng() * 2 - 1) * HALF;
+          attempts++;
+        } while (tooClose(x, z) && attempts < 200);
+        positions.push({ x, z });
+      }
 
       stations.forEach((st, i) => {
-        const angle = (i / count) * Math.PI * 2;
-        const x = Math.cos(angle) * radius;
-        const z = Math.sin(angle) * radius;
+        const { x, z } = positions[i];
 
         const isAir = st.monitor_type?.category === 'air';
         const r = st.latest_reading || {};
-        
+
         // Height based on PM2.5 or noise dB
         let heightVal = 0.2;
         let colorHex = 0x10b981;
 
         if (isAir) {
           const pm = r.pm2_5 || 10;
-          heightVal = Math.min(0.9, Math.max(0.15, (pm / 35) * 0.7));
+          heightVal = Math.min(1.2, Math.max(0.18, (pm / 35) * 0.9));
           colorHex = pm > 25 ? 0xef4444 : (pm > 12 ? 0xf59e0b : 0x10b981);
         } else {
           const db = r.laeq || 50;
-          heightVal = Math.min(0.9, Math.max(0.15, (db / 85) * 0.7));
+          heightVal = Math.min(1.2, Math.max(0.18, (db / 85) * 0.9));
           colorHex = 0x6366f1;
         }
 
-        const pillarGeo = new THREE.CylinderGeometry(0.04, 0.04, heightVal, 18);
+        // Pillar
+        const pillarGeo = new THREE.CylinderGeometry(0.045, 0.055, heightVal, 18);
         const pillarMat = new THREE.MeshStandardMaterial({
           color: colorHex,
           emissive: colorHex,
-          emissiveIntensity: 0.25,
+          emissiveIntensity: 0.3,
           roughness: 0.2,
-          metalness: 0.5
+          metalness: 0.55
         });
 
         const pillar = new THREE.Mesh(pillarGeo, pillarMat);
         pillar.position.set(x, heightVal / 2, z);
         pillar.castShadow = true;
         pillar.receiveShadow = true;
-        pillar.userData = { station: st, index: i, defaultY: heightVal / 2, baseColor: colorHex };
+        pillar.userData = {
+          station: st,
+          index: i,
+          defaultHeight: heightVal,
+          defaultY: heightVal / 2,
+          baseColor: colorHex,
+          worldPos: new THREE.Vector3() // filled after placement
+        };
 
         dataGroup.add(pillar);
         pillarMeshes.push(pillar);
 
+        // Top cap glow sphere
+        const capGeo = new THREE.SphereGeometry(0.055, 12, 12);
+        const capMat = new THREE.MeshBasicMaterial({ color: colorHex });
+        const cap = new THREE.Mesh(capGeo, capMat);
+        cap.position.set(x, heightVal + 0.04, z);
+        dataGroup.add(cap);
+
         // Ground ring accent
-        const ringGeo = new THREE.RingGeometry(0.05, 0.07, 16).rotateX(-Math.PI / 2);
-        const ringMat = new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide });
+        const ringGeo = new THREE.RingGeometry(0.06, 0.1, 20).rotateX(-Math.PI / 2);
+        const ringMat = new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
         const ring = new THREE.Mesh(ringGeo, ringMat);
-        ring.position.set(x, 0.005, z);
+        ring.position.set(x, 0.003, z);
         dataGroup.add(ring);
       });
     }
@@ -667,17 +707,22 @@
 
       // Reset previous
       pillarMeshes.forEach(p => {
-        p.material.emissiveIntensity = 0.25;
+        p.material.emissiveIntensity = 0.3;
         p.scale.set(1, 1, 1);
       });
 
       // Highlight selected
-      pillar.material.emissiveIntensity = 0.8;
-      pillar.scale.set(1.3, 1.15, 1.3);
+      pillar.material.emissiveIntensity = 1.0;
+      pillar.scale.set(1.35, 1.15, 1.35);
 
       const st = pillar.userData.station;
       activeSelectedStation = st;
       updateXRCard(st);
+
+      // Always ensure card is visible when a pillar is selected
+      const cardWrapper = document.getElementById('xr-card-wrapper');
+      cardWrapper.style.opacity = '1';
+      cardWrapper.style.transform = 'translateY(0)';
     }
 
     function updateXRCard(st) {
@@ -775,12 +820,14 @@
       document.getElementById('xr-status-text').textContent = 'Drag to rotate, pinch/scroll to zoom, tap pillars to inspect.';
 
       isARActive = false;
+      scenePlaced = false;
       controls.enabled = true;
       dataGroup.position.set(0, 0, 0);
       dataGroup.visible = true;
-      reticle.visible = false;
+      reticle.visible = false; // never show reticle in desktop mode
 
       build3DAirQualityVisualisation();
+      // Auto-select first pillar so card is visible immediately
       if (pillarMeshes.length > 0) selectPillar(pillarMeshes[0]);
     }
 
@@ -800,14 +847,15 @@
         dataGroup.position.y += 0.02;
         dataGroup.visible = true;
         scenePlaced = true;
+        // Hide reticle immediately and permanently after placement
         reticle.visible = false;
-        document.getElementById('xr-status-text').textContent = 'Teleport anchored! Tap air quality pillars to inspect.';
+        hitTestSource = null; // stop hit testing
+        document.getElementById('xr-status-text').textContent = 'Walk near a pillar — it will highlight and show live readings.';
         audio.playChime();
-        if (pillarMeshes.length > 0) selectPillar(pillarMeshes[0]);
         return;
       }
 
-      // Pillar Raycasting
+      // Pillar Raycasting (tap to select in both AR and desktop)
       pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
       pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
@@ -818,44 +866,89 @@
       }
     }
 
+    // Proximity threshold: 1.5m from a pillar triggers auto-card in AR
+    const PROXIMITY_THRESHOLD = 1.5;
+    const _camWorldPos = new THREE.Vector3();
+    const _pillarWorldPos = new THREE.Vector3();
+    let lastProximityPillar = null;
+
+    function checkXRCameraProximity() {
+      if (!isARActive || !scenePlaced || pillarMeshes.length === 0) return;
+
+      camera.getWorldPosition(_camWorldPos);
+
+      let closestPillar = null;
+      let closestDist = Infinity;
+
+      pillarMeshes.forEach(p => {
+        p.getWorldPosition(_pillarWorldPos);
+        // Only compare XZ plane distance (ignore height)
+        const dx = _camWorldPos.x - _pillarWorldPos.x;
+        const dz = _camWorldPos.z - _pillarWorldPos.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestPillar = p;
+        }
+      });
+
+      if (closestPillar && closestDist <= PROXIMITY_THRESHOLD) {
+        if (closestPillar !== lastProximityPillar) {
+          lastProximityPillar = closestPillar;
+          selectPillar(closestPillar);
+          document.getElementById('xr-status-text').textContent =
+            `Near: ${closestPillar.userData.station?.label || 'Station'} — ${Math.round(closestDist * 100)}cm away`;
+        }
+      } else if (lastProximityPillar && closestDist > PROXIMITY_THRESHOLD + 0.3) {
+        // Left the zone — dim card but keep it visible
+        lastProximityPillar = null;
+      }
+    }
+
     function renderLoop(timestamp, frame) {
       if (frame && isARActive) {
         const session = renderer.xr.getSession();
         const referenceSpace = renderer.xr.getReferenceSpace();
 
-        if (!hitTestSourceRequested) {
-          session.requestReferenceSpace('viewer').then(viewerSpace => {
-            session.requestHitTestSource({ space: viewerSpace }).then(source => {
-              hitTestSource = source;
+        // Only do hit-testing before the scene is placed
+        if (!scenePlaced) {
+          if (!hitTestSourceRequested) {
+            session.requestReferenceSpace('viewer').then(viewerSpace => {
+              session.requestHitTestSource({ space: viewerSpace }).then(source => {
+                hitTestSource = source;
+              });
             });
-          });
-          session.addEventListener('end', () => {
-            hitTestSourceRequested = false;
-            hitTestSource = null;
-          });
-          hitTestSourceRequested = true;
-        }
+            session.addEventListener('end', () => {
+              hitTestSourceRequested = false;
+              hitTestSource = null;
+            });
+            hitTestSourceRequested = true;
+          }
 
-        if (hitTestSource && !scenePlaced) {
-          const hitTestResults = frame.getHitTestResults(hitTestSource);
-          if (hitTestResults.length > 0) {
-            const hit = hitTestResults[0];
-            reticle.visible = true;
-            reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
-            document.getElementById('xr-status-text').textContent = 'Surface locked! Tap screen to anchor 3D readings.';
-          } else {
-            reticle.visible = false;
-            document.getElementById('xr-status-text').textContent = 'Scanning flat surface...';
+          if (hitTestSource) {
+            const hitTestResults = frame.getHitTestResults(hitTestSource);
+            if (hitTestResults.length > 0) {
+              const hit = hitTestResults[0];
+              reticle.visible = true;
+              reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+              document.getElementById('xr-status-text').textContent = 'Surface detected — tap to anchor air quality stations.';
+            } else {
+              reticle.visible = false;
+              document.getElementById('xr-status-text').textContent = 'Scanning flat surface... point at floor or table.';
+            }
           }
         }
+
+        // Check proximity to pillars once the scene is placed
+        checkXRCameraProximity();
       }
 
       if (controls && controls.enabled) {
         controls.update();
       }
 
-      // Gentle rotation if in desktop preview mode
-      if (!isARActive && dataGroup) {
+      // Gentle rotation only in desktop preview mode
+      if (!isARActive && dataGroup && !scenePlaced) {
         dataGroup.rotation.y += 0.003;
       }
 
