@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Dublin Live Air & Noise Quality Monitor + WebXR AR</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Three.js CDN imports -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --card-bg: rgba(15, 23, 42, 0.88);
+      --card-border: rgba(255, 255, 255, 0.12);
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.35);
+      --accent-pink: #ec4899;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --font-main: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-display: 'Space Grotesk', sans-serif;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', var(--font-main), sans-serif;
+      background: #090d16;
+      color: #f8fafc;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    #webgl-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 10;
+      display: none;
+      pointer-events: auto;
+    }
+
+    /* WebXR UI Overlay */
+    #xr-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 20;
+      display: none;
+      pointer-events: none;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: env(safe-area-inset-top, 16px) env(safe-area-inset-right, 16px) env(safe-area-inset-bottom, 16px) env(safe-area-inset-left, 16px);
+      box-sizing: border-box;
+    }
+
+    .xr-interactive {
+      pointer-events: auto !important;
+    }
+
+    .glass-panel {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.45), 0 0 15px rgba(56, 189, 248, 0.08);
+      border-radius: 16px;
+    }
+
+    /* Dublin Proximity Banner */
+    .beacon-alert-banner {
+      position: fixed;
+      top: 76px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-120%);
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.95), rgba(16, 185, 129, 0.92));
+      color: #ffffff;
+      padding: 10px 20px;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      box-shadow: 0 10px 25px rgba(14, 165, 233, 0.45);
+      z-index: 100;
+      transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .beacon-alert-banner.active {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Pulse dot */
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: pulse-dot 2s infinite ease-in-out;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.4); opacity: 0.6; }
+    }
+
+    /* Dublin View Modal / Fullscreen Panel */
+    #dublin-mode-view {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 30;
+      display: none;
+      flex-direction: column;
+      background: #090d16;
+    }
+
+    #dublin-leaflet-map {
+      width: 100%;
+      height: 100%;
+    }
+
+    #dublin-hud {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      z-index: 40;
+      pointer-events: none;
+    }
+
+    #map { height: 500px; border-radius: 0.75rem; z-index: 1; }
+  </style>
+</head>
+<body class="bg-[#090d16] text-slate-100 min-h-screen flex flex-col">
+
+  <!-- 3D Three.js WebXR Container -->
+  <div id="webgl-container"></div>
+
+  <!-- Beacon Alert Banner (Smart Proximity Banner) -->
+  <div id="beacon-alert-banner" class="beacon-alert-banner">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/><circle cx="12" cy="12" r="4"/></svg>
+    <span id="beacon-alert-text">Dublin Air Quality Beacon Detected!</span>
+  </div>
+
+  <!-- WebXR AR In-Experience Overlay (HUD) -->
+  <div id="xr-overlay">
+    <!-- Top XR Controls -->
+    <div class="flex items-center justify-between gap-2 xr-interactive">
+      <div class="glass-panel px-3 py-2 flex items-center gap-2 text-xs">
+        <div class="status-dot bg-cyan-400 shadow-[0_0_8px_#38bdf8]"></div>
+        <span id="xr-mode-badge" class="font-bold text-cyan-300 font-mono">AR RETICLE</span>
+        <span class="text-slate-500">|</span>
+        <span id="xr-status-text" class="text-slate-300 text-[11px] truncate max-w-[200px] sm:max-w-md">Scanning flat surface...</span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="btn-sound-toggle" class="glass-panel p-2 text-slate-300 hover:text-white transition rounded-xl text-xs flex items-center gap-1 font-semibold">
+          <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M11 5L6 9H2v6h4l5 4V5z"/></svg>
+        </button>
+        <button id="btn-xr-exit" class="glass-panel px-3 py-2 text-rose-300 hover:bg-rose-950/60 transition rounded-xl text-xs font-bold border border-rose-700/50">
+          Exit 3D/AR
+        </button>
+      </div>
+    </div>
+
+    <!-- Active 3D Station Detail Card floating in AR -->
+    <div id="xr-card-wrapper" class="w-full max-w-sm mx-auto xr-interactive mb-4">
+      <div id="xr-station-card" class="glass-panel p-4 text-xs space-y-2 border-cyan-500/40 border">
+        <div class="flex justify-between items-start">
+          <div>
+            <span class="text-[10px] font-bold text-cyan-400 tracking-wider uppercase" id="xr-station-type">DUBLIN AIR STATION</span>
+            <h3 class="text-base font-bold text-white" id="xr-station-name">Select Station in 3D</h3>
+          </div>
+          <span id="xr-station-val-badge" class="px-2 py-0.5 rounded text-xs font-bold bg-emerald-950 text-emerald-400 border border-emerald-600/40">--</span>
+        </div>
+        <div id="xr-station-details" class="text-slate-300 text-[11px] space-y-0.5">
+          Tap 3D pillars or surface to inspect live telemetry.
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button id="btn-xr-prev-station" class="flex-1 py-1.5 bg-slate-800/80 hover:bg-slate-700 rounded-lg text-slate-200 font-semibold text-[11px] border border-slate-700">Previous</button>
+          <button id="btn-xr-next-station" class="flex-1 py-1.5 bg-cyan-600/80 hover:bg-cyan-500 rounded-lg text-white font-semibold text-[11px]">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dublin Live GPS Radar Tracking Fullscreen View -->
+  <div id="dublin-mode-view">
+    <div id="dublin-hud">
+      <div class="glass-panel p-4 max-w-lg mx-auto pointer-events-auto space-y-3">
+        <div class="flex justify-between items-center">
+          <div class="flex items-center gap-2">
+            <div class="status-dot bg-cyan-400 shadow-[0_0_8px_#38bdf8]"></div>
+            <span class="font-bold text-white text-sm sm:text-base font-['Space_Grotesk']">Dublin Live GPS Tracking</span>
+          </div>
+          <button id="btn-close-dublin-mode" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 transition">
+            Close Mode
+          </button>
+        </div>
+
+        <p id="dublin-gps-status" class="text-xs text-slate-400">
+          Tracking GPS satellites... Walk towards Dublin air quality stations to unlock live telemetry.
+        </p>
+
+        <!-- Nearest Station Radar Box -->
+        <div id="dublin-closest-station" class="bg-cyan-950/40 border border-cyan-600/40 rounded-xl p-3 space-y-1">
+          <div class="text-[10px] uppercase font-bold text-cyan-400">Nearest Dublin Sensor</div>
+          <div id="dublin-station-name" class="font-bold text-white text-sm">Locating...</div>
+          <div id="dublin-station-dist" class="text-xs text-slate-300">Distance: -- metres away</div>
+          <div id="dublin-station-stat" class="text-xs text-emerald-400 font-medium">--</div>
+        </div>
+
+        <div class="flex gap-2 pt-1">
+          <button id="btn-dublin-teleport" class="flex-1 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 rounded-xl text-white font-bold text-xs shadow-md transition">
+            Simulate Dublin Walk (Geofence Trigger)
+          </button>
+          <button id="btn-launch-ar-from-dublin" class="flex-1 py-2 bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 rounded-xl text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"/></svg>
+            Launch 3D AR
+          </button>
+        </div>
+      </div>
+    </div>
+    <div id="dublin-leaflet-map"></div>
+  </div>
+
+  <!-- Standard Dashboard Header -->
+  <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div>
+        <div class="flex items-center gap-3">
+          <div class="h-3 w-3 rounded-full bg-emerald-400 animate-pulse"></div>
+          <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-white font-['Space_Grotesk']">Dublin Air Quality Monitor</h1>
+        </div>
+        <p class="text-xs text-slate-400 mt-0.5">
+          Live telemetry from <a href="https://data.gov.ie/dataset/sonitus" target="_blank" class="text-cyan-400 hover:underline">data.gov.ie</a> (Smart Dublin / DCC)
+        </p>
+      </div>
+
+      <!-- Action Buttons including WebXR AR and Dublin Mode -->
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="btnLaunchDublinMode" class="px-3.5 py-1.5 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-600/70 text-indigo-300 text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-sm">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><circle cx="12" cy="11" r="3"/></svg>
+          <span>Dublin Mode</span>
+        </button>
+
+        <button id="btnLaunchAR" class="px-3.5 py-1.5 bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-md">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"/></svg>
+          <span id="arBtnLabel">WebXR AR 3D</span>
+        </button>
+
+        <button id="simBtn" onclick="simulateNearStation()" class="px-3 py-1.5 bg-amber-950/70 hover:bg-amber-900 border border-amber-700/60 text-amber-300 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+          <span>Simulate</span>
+        </button>
+
+        <button id="geoBtn" onclick="toggleGeolocation()" class="px-3 py-1.5 bg-cyan-950/70 hover:bg-cyan-900 border border-cyan-700/60 text-cyan-300 text-xs font-semibold rounded-xl transition flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+          <span id="geoBtnText">GPS Alert</span>
+        </button>
+
+        <button id="refreshBtn" onclick="loadData()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center gap-1.5">
+          <svg id="refreshIcon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+
+    <!-- Proximity Alert Banner -->
+    <div id="proximityAlert" class="hidden bg-gradient-to-r from-cyan-950 via-slate-900 to-cyan-950 border-2 border-cyan-500 rounded-2xl p-5 shadow-2xl animate-pulse">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="space-y-1">
+          <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-cyan-500 text-slate-950">
+            <span class="w-2 h-2 rounded-full bg-slate-950 animate-ping"></span>
+            Proximity Alert: Within <span id="proxDistance">--</span>m
+          </div>
+          <h3 id="proxStationName" class="text-xl font-bold text-white mt-1">Station Name</h3>
+          <p id="proxStationLocation" class="text-xs text-slate-300">Station Location</p>
+        </div>
+
+        <div class="flex items-center gap-6 bg-slate-900/90 border border-slate-700/80 rounded-xl px-5 py-3">
+          <div>
+            <div class="text-[10px] uppercase font-bold text-slate-400">Current Reading</div>
+            <div id="proxReadingMain" class="text-2xl font-black text-cyan-400 mt-0.5">--</div>
+          </div>
+          <div class="border-l border-slate-700 pl-4 space-y-0.5 text-xs text-slate-300">
+            <div id="proxReadingSub1">-</div>
+            <div id="proxReadingSub2" class="text-slate-400 text-[11px]">-</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Metrics Summary Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
+        <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Active Air Monitors</div>
+        <div id="statAirCount" class="text-2xl font-bold text-cyan-400 mt-1">--</div>
+        <div class="text-xs text-slate-500 mt-0.5">PM2.5, PM10, NO₂, SO₂, O₃</div>
+      </div>
+      <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
+        <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Noise Monitors</div>
+        <div id="statNoiseCount" class="text-2xl font-bold text-indigo-400 mt-1">--</div>
+        <div class="text-xs text-slate-500 mt-0.5">LAeq sound level (dB)</div>
+      </div>
+      <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
+        <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Avg Dublin PM2.5</div>
+        <div id="statAvgPM25" class="text-2xl font-bold text-emerald-400 mt-1">--</div>
+        <div class="text-xs text-slate-500 mt-0.5">µg/m³ (WHO target &lt; 15)</div>
+      </div>
+      <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4">
+        <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Avg Dublin NO₂</div>
+        <div id="statAvgNO2" class="text-2xl font-bold text-amber-400 mt-1">--</div>
+        <div class="text-xs text-slate-500 mt-0.5">µg/m³ (WHO target &lt; 25)</div>
+      </div>
+    </div>
+
+    <!-- Map & Filters Section -->
+    <div class="bg-slate-800/40 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <h2 class="text-lg font-semibold text-white">Monitoring Stations Map</h2>
+          <span id="stationCountBadge" class="bg-slate-700 text-slate-300 text-xs px-2 py-0.5 rounded-full font-medium">0 stations</span>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="setFilter('air')" id="btnFilterAir" class="filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-cyan-600 text-white transition">Air Quality Only</button>
+          <button onclick="setFilter('all')" id="btnFilterAll" class="filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">All Stations</button>
+          <button onclick="setFilter('noise')" id="btnFilterNoise" class="filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition">Noise Only</button>
+        </div>
+      </div>
+
+      <!-- Leaflet Map Element -->
+      <div id="map" class="shadow-inner"></div>
+
+      <!-- Legend -->
+      <div class="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1">
+        <span class="font-medium text-slate-300">Station Status:</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span> Good</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span> Moderate</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-rose-500 inline-block"></span> Unhealthy / High</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-slate-500 inline-block"></span> No recent reading</span>
+      </div>
+    </div>
+
+    <!-- Live Readings Data Table -->
+    <div class="bg-slate-800/40 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h2 class="text-lg font-semibold text-white">Live Station Readout</h2>
+        <input type="text" id="searchInput" oninput="renderTable()" placeholder="Search station name or location..." class="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 w-full sm:w-64">
+      </div>
+
+      <div class="overflow-x-auto rounded-lg border border-slate-800">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="bg-slate-900/90 text-slate-400 uppercase font-semibold text-[11px] border-b border-slate-800">
+            <tr>
+              <th class="px-4 py-3">Station</th>
+              <th class="px-4 py-3">Type</th>
+              <th class="px-4 py-3">Primary Measurement</th>
+              <th class="px-4 py-3">Other Pollutants</th>
+              <th class="px-4 py-3">Last Recorded</th>
+              <th class="px-4 py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody id="readingsTableBody" class="divide-y divide-slate-800/60 font-medium">
+            <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Loading monitoring data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="border-t border-slate-800 py-4 text-center text-xs text-slate-500">
+    Official Irish Open Data: <a href="https://data.gov.ie/dataset/sonitus" target="_blank" class="text-cyan-400 hover:underline">data.gov.ie/dataset/sonitus</a> | Dublin City Council & Smart Dublin Open Data.
+  </footer>
+
+  <!-- Web Audio Synthesizer (from nta16) -->
+  <script>
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) {
+            this.ctx = new AudioContext();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playPop(freq = 520, duration = 0.08) {
+        if (this.muted || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.5, this.ctx.currentTime + duration);
+        gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + duration);
+      }
+      playChime() {
+        if (this.muted || !this.ctx) return;
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime + i * 0.07);
+          gain.gain.setValueAtTime(0.1, this.ctx.currentTime + i * 0.07);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + i * 0.07 + 0.35);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(this.ctx.currentTime + i * 0.07);
+          osc.stop(this.ctx.currentTime + i * 0.07 + 0.36);
+        });
+      }
+    }
+    const audio = new SoundEngine();
+  </script>
+
+  <!-- Main App & WebXR AR / 3D Implementation -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // Global App State
+    window.allMonitors = [];
+    window.map = null;
+    let markersLayer = null;
+    let userMarker = null;
+    let userCircle = null;
+    let activeFilter = 'air';
+    let geoWatchId = null;
+    let isTracking = false;
+
+    // WebXR / 3D Scene State
+    let scene, camera, renderer, controls;
+    let xrSession = null;
+    let reticle, hitTestSource = null, hitTestSourceRequested = false;
+    let dataGroup, pillarMeshes = [];
+    let raycaster, pointer;
+    let isARActive = false;
+    let scenePlaced = false;
+    let activeSelectedStation = null;
+
+    // Dublin Mode State
+    let dublinMap = null;
+    let dublinWatchId = null;
+    let dublinUserMarker = null;
+    let dublinStationsLayer = null;
+
+    // Haversine distance in metres
+    function getDistanceMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const phi1 = lat1 * Math.PI / 180;
+      const phi2 = lat2 * Math.PI / 180;
+      const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+      const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+      const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+                Math.cos(phi1) * Math.cos(phi2) *
+                Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function getStatusColor(monitor) {
+      const r = monitor.latest_reading;
+      if (!r) return '#64748b';
+      if (r.status === 'green' || monitor.current_rating === 1) return '#10b981';
+      if (r.status === 'yellow' || monitor.current_rating === 2) return '#f59e0b';
+      if (r.status === 'red' || monitor.current_rating >= 3) return '#ef4444';
+      return '#3b82f6';
+    }
+
+    /* ----------------------------------------------------
+       THREE.JS & WEBXR AR ENGINE
+    ----------------------------------------------------- */
+    function initThree() {
+      const container = document.getElementById('webgl-container');
+      scene = new THREE.Scene();
+
+      camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.01, 30);
+      camera.position.set(0, 1.4, 2.2);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x000000, 0);
+      renderer.shadowMap.enabled = true;
+      renderer.xr.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0.4, 0);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      dirLight.position.set(2, 5, 2);
+      dirLight.castShadow = true;
+      scene.add(dirLight);
+
+      // AR Reticle for hit testing
+      const reticleGeo = new THREE.RingGeometry(0.12, 0.16, 32).rotateX(-Math.PI / 2);
+      const reticleMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide });
+      reticle = new THREE.Mesh(reticleGeo, reticleMat);
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
+
+      // Root data group
+      dataGroup = new THREE.Group();
+      scene.add(dataGroup);
+
+      raycaster = new THREE.Raycaster();
+      pointer = new THREE.Vector2();
+
+      // Interactions
+      window.addEventListener('resize', onWindowResize);
+      renderer.domElement.addEventListener('pointerdown', onScenePointerDown);
+
+      renderer.setAnimationLoop(renderLoop);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    /* ----------------------------------------------------
+       3D DATA PILLARS GENERATION (Air Quality Telemetry)
+    ----------------------------------------------------- */
+    function build3DAirQualityVisualisation() {
+      // Clear existing children
+      while (dataGroup.children.length > 0) {
+        dataGroup.remove(dataGroup.children[0]);
+      }
+      pillarMeshes = [];
+
+      // Base Pedestal
+      const pedestalGeo = new THREE.CylinderGeometry(1.2, 1.25, 0.04, 48);
+      const pedestalMat = new THREE.MeshStandardMaterial({
+        color: 0x0f172a,
+        roughness: 0.3,
+        metalness: 0.8,
+        transparent: true,
+        opacity: 0.85
+      });
+      const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat);
+      pedestal.position.y = -0.02;
+      pedestal.receiveShadow = true;
+      dataGroup.add(pedestal);
+
+      // Center glowing holographic core
+      const coreGeo = new THREE.SphereGeometry(0.08, 24, 24);
+      const coreMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true });
+      const core = new THREE.Mesh(coreGeo, coreMat);
+      core.position.y = 0.25;
+      dataGroup.add(core);
+
+      // Filter valid monitors
+      const stations = window.allMonitors.filter(m => m.latitude && m.longitude && m.latest_reading).slice(0, 16);
+      if (stations.length === 0) return;
+
+      const radius = 0.75;
+      const count = stations.length;
+
+      stations.forEach((st, i) => {
+        const angle = (i / count) * Math.PI * 2;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+
+        const isAir = st.monitor_type?.category === 'air';
+        const r = st.latest_reading || {};
+        
+        // Height based on PM2.5 or noise dB
+        let heightVal = 0.2;
+        let colorHex = 0x10b981;
+
+        if (isAir) {
+          const pm = r.pm2_5 || 10;
+          heightVal = Math.min(0.9, Math.max(0.15, (pm / 35) * 0.7));
+          colorHex = pm > 25 ? 0xef4444 : (pm > 12 ? 0xf59e0b : 0x10b981);
+        } else {
+          const db = r.laeq || 50;
+          heightVal = Math.min(0.9, Math.max(0.15, (db / 85) * 0.7));
+          colorHex = 0x6366f1;
+        }
+
+        const pillarGeo = new THREE.CylinderGeometry(0.04, 0.04, heightVal, 18);
+        const pillarMat = new THREE.MeshStandardMaterial({
+          color: colorHex,
+          emissive: colorHex,
+          emissiveIntensity: 0.25,
+          roughness: 0.2,
+          metalness: 0.5
+        });
+
+        const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+        pillar.position.set(x, heightVal / 2, z);
+        pillar.castShadow = true;
+        pillar.receiveShadow = true;
+        pillar.userData = { station: st, index: i, defaultY: heightVal / 2, baseColor: colorHex };
+
+        dataGroup.add(pillar);
+        pillarMeshes.push(pillar);
+
+        // Ground ring accent
+        const ringGeo = new THREE.RingGeometry(0.05, 0.07, 16).rotateX(-Math.PI / 2);
+        const ringMat = new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.set(x, 0.005, z);
+        dataGroup.add(ring);
+      });
+    }
+
+    function selectPillar(pillar) {
+      if (!pillar) return;
+      audio.init();
+      audio.playPop(580, 0.1);
+
+      // Reset previous
+      pillarMeshes.forEach(p => {
+        p.material.emissiveIntensity = 0.25;
+        p.scale.set(1, 1, 1);
+      });
+
+      // Highlight selected
+      pillar.material.emissiveIntensity = 0.8;
+      pillar.scale.set(1.3, 1.15, 1.3);
+
+      const st = pillar.userData.station;
+      activeSelectedStation = st;
+      updateXRCard(st);
+    }
+
+    function updateXRCard(st) {
+      if (!st) return;
+      const isAir = st.monitor_type?.category === 'air';
+      const r = st.latest_reading || {};
+
+      document.getElementById('xr-station-type').textContent = `DUBLIN ${isAir ? 'AIR QUALITY' : 'NOISE'} SENSOR`;
+      document.getElementById('xr-station-name').textContent = st.label || 'Station';
+
+      const badge = document.getElementById('xr-station-val-badge');
+      let detailsText = '';
+
+      if (isAir) {
+        const pm25 = r.pm2_5 != null ? `${r.pm2_5.toFixed(1)} µg/m³ PM2.5` : 'Active';
+        badge.textContent = pm25;
+        badge.className = "px-2 py-0.5 rounded text-xs font-bold " + (r.pm2_5 > 25 ? "bg-rose-950 text-rose-300" : (r.pm2_5 > 12 ? "bg-amber-950 text-amber-300" : "bg-emerald-950 text-emerald-300"));
+        detailsText = `Location: ${st.location || 'Dublin'}<br>PM10: ${r.pm10 ? r.pm10.toFixed(1) + ' µg/m³' : 'N/A'} | NO₂: ${r.no2 ? r.no2.toFixed(1) + ' µg/m³' : 'N/A'}<br>Status: ${r.status || 'Active'} (${r.time_since || ''} ago)`;
+      } else {
+        badge.textContent = `${r.laeq || '--'} dB`;
+        badge.className = "px-2 py-0.5 rounded text-xs font-bold bg-indigo-950 text-indigo-300";
+        detailsText = `Location: ${st.location || 'Dublin'}<br>Noise Level: ${r.laeq || '--'} dB (LAeq) | Peak: ${r.lafmax || '--'} dB<br>Recorded: ${r.time_since || ''} ago`;
+      }
+
+      document.getElementById('xr-station-details').innerHTML = detailsText;
+    }
+
+    /* ----------------------------------------------------
+       WEBXR AR SESSION MANAGEMENT
+    ----------------------------------------------------- */
+    async function launchARSession() {
+      audio.init();
+      audio.playPop(480, 0.08);
+
+      const overlay = document.getElementById('xr-overlay');
+      const container = document.getElementById('webgl-container');
+
+      if (!navigator.xr) {
+        alert('WebXR is not supported on this browser. Launching Desktop 3D Preview Mode.');
+        launch3DDesktopMode();
+        return;
+      }
+
+      const isSupported = await navigator.xr.isSessionSupported('immersive-ar');
+      if (!isSupported) {
+        alert('WebXR Immersive AR is not supported on this device. Launching interactive 3D Orbit Mode.');
+        launch3DDesktopMode();
+        return;
+      }
+
+      try {
+        container.style.display = 'block';
+        overlay.style.display = 'flex';
+        build3DAirQualityVisualisation();
+
+        const sessionInit = {
+          requiredFeatures: ['hit-test'],
+          optionalFeatures: ['dom-overlay', 'local-floor'],
+          domOverlay: { root: overlay }
+        };
+
+        const session = await navigator.xr.requestSession('immersive-ar', sessionInit);
+        xrSession = session;
+        isARActive = true;
+        scenePlaced = false;
+
+        document.getElementById('xr-mode-badge').textContent = 'AR HIT-TEST';
+        document.getElementById('xr-status-text').textContent = 'Scan floor/table and tap to anchor 3D telemetry.';
+        controls.enabled = false;
+
+        await renderer.xr.setSession(session);
+
+        session.addEventListener('end', () => {
+          isARActive = false;
+          xrSession = null;
+          hitTestSource = null;
+          hitTestSourceRequested = false;
+          exit3DExperience();
+        });
+
+      } catch (err) {
+        console.error('AR Launch error:', err);
+        launch3DDesktopMode();
+      }
+    }
+
+    function launch3DDesktopMode() {
+      const container = document.getElementById('webgl-container');
+      const overlay = document.getElementById('xr-overlay');
+
+      container.style.display = 'block';
+      overlay.style.display = 'flex';
+
+      document.getElementById('xr-mode-badge').textContent = '3D ORBIT MODE';
+      document.getElementById('xr-status-text').textContent = 'Drag to rotate, pinch/scroll to zoom, tap pillars to inspect.';
+
+      isARActive = false;
+      controls.enabled = true;
+      dataGroup.position.set(0, 0, 0);
+      dataGroup.visible = true;
+      reticle.visible = false;
+
+      build3DAirQualityVisualisation();
+      if (pillarMeshes.length > 0) selectPillar(pillarMeshes[0]);
+    }
+
+    function exit3DExperience() {
+      if (xrSession) {
+        xrSession.end();
+      }
+      document.getElementById('webgl-container').style.display = 'none';
+      document.getElementById('xr-overlay').style.display = 'none';
+      isARActive = false;
+    }
+
+    function onScenePointerDown(event) {
+      if (isARActive && !scenePlaced && reticle.visible) {
+        // Anchor the scene onto reticle hit test pose
+        dataGroup.position.setFromMatrixPosition(reticle.matrix);
+        dataGroup.position.y += 0.02;
+        dataGroup.visible = true;
+        scenePlaced = true;
+        reticle.visible = false;
+        document.getElementById('xr-status-text').textContent = 'Teleport anchored! Tap air quality pillars to inspect.';
+        audio.playChime();
+        if (pillarMeshes.length > 0) selectPillar(pillarMeshes[0]);
+        return;
+      }
+
+      // Pillar Raycasting
+      pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+      pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+
+      const intersects = raycaster.intersectObjects(pillarMeshes);
+      if (intersects.length > 0) {
+        selectPillar(intersects[0].object);
+      }
+    }
+
+    function renderLoop(timestamp, frame) {
+      if (frame && isARActive) {
+        const session = renderer.xr.getSession();
+        const referenceSpace = renderer.xr.getReferenceSpace();
+
+        if (!hitTestSourceRequested) {
+          session.requestReferenceSpace('viewer').then(viewerSpace => {
+            session.requestHitTestSource({ space: viewerSpace }).then(source => {
+              hitTestSource = source;
+            });
+          });
+          session.addEventListener('end', () => {
+            hitTestSourceRequested = false;
+            hitTestSource = null;
+          });
+          hitTestSourceRequested = true;
+        }
+
+        if (hitTestSource && !scenePlaced) {
+          const hitTestResults = frame.getHitTestResults(hitTestSource);
+          if (hitTestResults.length > 0) {
+            const hit = hitTestResults[0];
+            reticle.visible = true;
+            reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+            document.getElementById('xr-status-text').textContent = 'Surface locked! Tap screen to anchor 3D readings.';
+          } else {
+            reticle.visible = false;
+            document.getElementById('xr-status-text').textContent = 'Scanning flat surface...';
+          }
+        }
+      }
+
+      if (controls && controls.enabled) {
+        controls.update();
+      }
+
+      // Gentle rotation if in desktop preview mode
+      if (!isARActive && dataGroup) {
+        dataGroup.rotation.y += 0.003;
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    /* ----------------------------------------------------
+       DUBLIN MODE FEATURES (Map, GPS Radar & Geofence)
+    ----------------------------------------------------- */
+    function openDublinMode() {
+      audio.init();
+      audio.playPop(620, 0.1);
+      document.getElementById('dublin-mode-view').style.display = 'flex';
+
+      if (!dublinMap) {
+        dublinMap = L.map('dublin-leaflet-map').setView([53.3498, -6.2603], 13);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+          maxZoom: 19
+        }).addTo(dublinMap);
+        dublinStationsLayer = L.layerGroup().addTo(dublinMap);
+      }
+
+      dublinMap.invalidateSize();
+      renderDublinModeStations();
+      startDublinGPSTracking();
+    }
+
+    function closeDublinMode() {
+      document.getElementById('dublin-mode-view').style.display = 'none';
+      if (dublinWatchId) {
+        navigator.geolocation.clearWatch(dublinWatchId);
+        dublinWatchId = null;
+      }
+      document.getElementById('beacon-alert-banner').classList.remove('active');
+    }
+
+    function renderDublinModeStations() {
+      if (!dublinStationsLayer) return;
+      dublinStationsLayer.clearLayers();
+
+      window.allMonitors.forEach(m => {
+        if (!m.latitude || !m.longitude) return;
+        const lat = parseFloat(m.latitude);
+        const lng = parseFloat(m.longitude);
+        if (isNaN(lat) || isNaN(lng)) return;
+
+        const color = getStatusColor(m);
+        const r = m.latest_reading;
+        const isAir = m.monitor_type?.category === 'air';
+
+        const marker = L.circleMarker([lat, lng], {
+          radius: 9,
+          fillColor: color,
+          color: '#ffffff',
+          weight: 2,
+          fillOpacity: 0.9
+        });
+
+        // Radius circle to show proximity geofence (300m)
+        const geofenceCircle = L.circle([lat, lng], {
+          radius: 300,
+          color: color,
+          weight: 1,
+          dashArray: '4, 4',
+          fillColor: color,
+          fillOpacity: 0.06
+        });
+
+        marker.bindPopup(`
+          <div class="p-1 min-w-[180px] text-slate-900">
+            <div class="font-bold text-sm text-slate-900">${m.label || 'Station'}</div>
+            <div class="text-xs text-slate-500 mb-1">${m.location || 'Dublin'}</div>
+            <div class="text-xs font-semibold text-cyan-600">${isAir ? (r?.pm2_5 ? r.pm2_5.toFixed(1) + ' µg/m³ PM2.5' : 'Air Monitor') : (r?.laeq ? r.laeq + ' dB' : 'Noise Sensor')}</div>
+          </div>
+        `);
+
+        dublinStationsLayer.addLayer(marker);
+        dublinStationsLayer.addLayer(geofenceCircle);
+      });
+    }
+
+    function startDublinGPSTracking() {
+      if (!('geolocation' in navigator)) {
+        document.getElementById('dublin-gps-status').textContent = 'Geolocation not supported. Use the Simulation button to explore.';
+        return;
+      }
+
+      document.getElementById('dublin-gps-status').textContent = 'Acquiring high-accuracy GPS lock...';
+      dublinWatchId = navigator.geolocation.watchPosition(
+        pos => onDublinGPSUpdate(pos.coords.latitude, pos.coords.longitude),
+        err => {
+          document.getElementById('dublin-gps-status').textContent = 'GPS permission denied or unavailable. Tap simulate below!';
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 4000 }
+      );
+    }
+
+    function onDublinGPSUpdate(lat, lng) {
+      if (!dublinUserMarker && dublinMap) {
+        dublinUserMarker = L.circleMarker([lat, lng], {
+          radius: 10,
+          fillColor: '#38bdf8',
+          color: '#ffffff',
+          weight: 3,
+          fillOpacity: 1
+        }).addTo(dublinMap).bindPopup('<strong>Your Location</strong>');
+        dublinMap.setView([lat, lng], 15);
+      } else if (dublinUserMarker) {
+        dublinUserMarker.setLatLng([lat, lng]);
+      }
+
+      checkDublinProximity(lat, lng);
+    }
+
+    function checkDublinProximity(lat, lng) {
+      let nearest = null;
+      let minDistance = Infinity;
+
+      window.allMonitors.forEach(m => {
+        if (!m.latitude || !m.longitude) return;
+        const d = getDistanceMeters(lat, lng, parseFloat(m.latitude), parseFloat(m.longitude));
+        if (d < minDistance) {
+          minDistance = d;
+          nearest = m;
+        }
+      });
+
+      const banner = document.getElementById('beacon-alert-banner');
+      const bannerText = document.getElementById('beacon-alert-text');
+
+      if (nearest) {
+        const distRounded = Math.round(minDistance);
+        document.getElementById('dublin-station-name').textContent = nearest.label || 'Dublin Station';
+        document.getElementById('dublin-station-dist').textContent = `Distance: ${distRounded} metres away`;
+        
+        const r = nearest.latest_reading;
+        const isAir = nearest.monitor_type?.category === 'air';
+        const statText = isAir ? (r?.pm2_5 ? `PM2.5: ${r.pm2_5.toFixed(1)} µg/m³` : 'Active Air Monitor') : `Sound: ${r?.laeq || '--'} dB`;
+        document.getElementById('dublin-station-stat').textContent = statText;
+        document.getElementById('dublin-gps-status').textContent = `Active Radar Track: Locked to ${nearest.label} (${distRounded}m away)`;
+
+        if (distRounded <= 300) {
+          bannerText.textContent = `Dublin Proximity Geofence: ${nearest.label} (${distRounded}m)`;
+          banner.classList.add('active');
+          audio.playChime();
+        } else {
+          banner.classList.remove('active');
+        }
+      }
+    }
+
+    function simulateDublinWalk() {
+      const station = window.allMonitors.find(m => m.monitor_type?.category === 'air' && m.latitude && m.longitude) || window.allMonitors[0];
+      if (!station) return;
+
+      const simLat = parseFloat(station.latitude) + 0.0007;
+      const simLng = parseFloat(station.longitude) + 0.0007;
+
+      if (dublinWatchId) navigator.geolocation.clearWatch(dublinWatchId);
+      onDublinGPSUpdate(simLat, simLng);
+    }
+
+    /* ----------------------------------------------------
+       EVENT LISTENERS & BINDINGS
+    ----------------------------------------------------- */
+    document.getElementById('btnLaunchAR').addEventListener('click', launchARSession);
+    document.getElementById('btnLaunchDublinMode').addEventListener('click', openDublinMode);
+    document.getElementById('btn-close-dublin-mode').addEventListener('click', closeDublinMode);
+    document.getElementById('btn-launch-ar-from-dublin').addEventListener('click', () => {
+      closeDublinMode();
+      launchARSession();
+    });
+    document.getElementById('btn-dublin-teleport').addEventListener('click', simulateDublinWalk);
+    document.getElementById('btn-xr-exit').addEventListener('click', exit3DExperience);
+
+    document.getElementById('btn-sound-toggle').addEventListener('click', () => {
+      audio.muted = !audio.muted;
+      document.getElementById('btn-sound-toggle').style.opacity = audio.muted ? '0.4' : '1.0';
+    });
+
+    document.getElementById('btn-xr-next-station').addEventListener('click', () => {
+      if (pillarMeshes.length === 0) return;
+      const currIdx = activeSelectedStation ? pillarMeshes.findIndex(p => p.userData.station === activeSelectedStation) : 0;
+      const nextIdx = (currIdx + 1) % pillarMeshes.length;
+      selectPillar(pillarMeshes[nextIdx]);
+    });
+
+    document.getElementById('btn-xr-prev-station').addEventListener('click', () => {
+      if (pillarMeshes.length === 0) return;
+      const currIdx = activeSelectedStation ? pillarMeshes.findIndex(p => p.userData.station === activeSelectedStation) : 0;
+      const prevIdx = (currIdx - 1 + pillarMeshes.length) % pillarMeshes.length;
+      selectPillar(pillarMeshes[prevIdx]);
+    });
+
+    // Handle deep-linking query param ?mode=dublin or ?mode=ar
+    window.addEventListener('DOMContentLoaded', () => {
+      initThree();
+      initDashboardMap();
+      loadData().then(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const mode = urlParams.get('mode');
+        if (mode === 'dublin') openDublinMode();
+        else if (mode === 'ar' || mode === '3d') launchARSession();
+      });
+      setInterval(loadData, 60000);
+    });
+
+    /* ----------------------------------------------------
+       ORIGINAL DASHBOARD UTILS
+    ----------------------------------------------------- */
+    function initDashboardMap() {
+      window.map = L.map('map').setView([53.3498, -6.2603], 12);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+        maxZoom: 19
+      }).addTo(window.map);
+      markersLayer = L.layerGroup().addTo(window.map);
+    }
+
+    window.toggleGeolocation = function() {
+      if (isTracking) {
+        if (geoWatchId) navigator.geolocation.clearWatch(geoWatchId);
+        isTracking = false;
+        document.getElementById('geoBtnText').innerText = "GPS Alert";
+        document.getElementById('proximityAlert').classList.add('hidden');
+        if (userMarker) window.map.removeLayer(userMarker);
+        if (userCircle) window.map.removeLayer(userCircle);
+        return;
+      }
+
+      if (!('geolocation' in navigator)) {
+        alert('Geolocation is not supported by your browser.');
+        return;
+      }
+
+      document.getElementById('geoBtnText').innerText = "Locating...";
+      geoWatchId = navigator.geolocation.watchPosition(
+        onGeoSuccess,
+        err => {
+          document.getElementById('geoBtnText').innerText = "GPS Unavailable";
+          isTracking = false;
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+      );
+      isTracking = true;
+    };
+
+    window.simulateNearStation = function() {
+      const station = window.allMonitors.find(m => m.monitor_type?.category === 'air' && m.latitude && m.longitude) || window.allMonitors[0];
+      if (!station) return;
+
+      const simLat = parseFloat(station.latitude) + 0.0008;
+      const simLng = parseFloat(station.longitude) + 0.0008;
+
+      if (geoWatchId) navigator.geolocation.clearWatch(geoWatchId);
+      isTracking = true;
+      document.getElementById('geoBtnText').innerText = "Simulation Active";
+
+      onGeoSuccess({
+        coords: { latitude: simLat, longitude: simLng }
+      });
+    };
+
+    function onGeoSuccess(pos) {
+      const uLat = pos.coords.latitude;
+      const uLng = pos.coords.longitude;
+      document.getElementById('geoBtnText').innerText = "Tracking (300m)";
+
+      if (!userMarker) {
+        userMarker = L.circleMarker([uLat, uLng], {
+          radius: 9,
+          fillColor: '#06b6d4',
+          color: '#ffffff',
+          weight: 3,
+          fillOpacity: 1
+        }).addTo(window.map).bindPopup('<strong>Your Location</strong>');
+
+        userCircle = L.circle([uLat, uLng], {
+          radius: 300,
+          color: '#06b6d4',
+          weight: 1,
+          fillColor: '#06b6d4',
+          fillOpacity: 0.1
+        }).addTo(window.map);
+
+        window.map.setView([uLat, uLng], 15);
+      } else {
+        userMarker.setLatLng([uLat, uLng]);
+        userCircle.setLatLng([uLat, uLng]);
+      }
+
+      checkProximity(uLat, uLng);
+    }
+
+    function checkProximity(uLat, uLng) {
+      const alertEl = document.getElementById('proximityAlert');
+      let nearest = null;
+      let minDistance = Infinity;
+
+      window.allMonitors.forEach(m => {
+        if (!m.latitude || !m.longitude) return;
+        const d = getDistanceMeters(uLat, uLng, parseFloat(m.latitude), parseFloat(m.longitude));
+        if (d < minDistance) {
+          minDistance = d;
+          nearest = m;
+        }
+      });
+
+      if (nearest && minDistance <= 300) {
+        alertEl.classList.remove('hidden');
+        document.getElementById('proxDistance').innerText = Math.round(minDistance);
+        document.getElementById('proxStationName').innerText = `${nearest.label || 'Station'} (${nearest.location || 'Dublin'})`;
+        document.getElementById('proxStationLocation').innerText = `Station Code: ${nearest.code || 'N/A'}`;
+
+        const r = nearest.latest_reading;
+        if (r) {
+          if (nearest.monitor_type?.category === 'air') {
+            const mainVal = r.pm2_5 != null ? `${r.pm2_5.toFixed(1)} µg/m³ PM2.5` : (r.no2 != null ? `${r.no2.toFixed(1)} µg/m³ NO₂` : 'Active');
+            document.getElementById('proxReadingMain').innerText = mainVal;
+            document.getElementById('proxReadingSub1').innerText = `PM10: ${r.pm10 ? r.pm10.toFixed(1) + ' µg/m³' : 'N/A'} | NO₂: ${r.no2 ? r.no2.toFixed(1) + ' µg/m³' : 'N/A'}`;
+            document.getElementById('proxReadingSub2').innerText = `Recorded ${r.time_since || ''} ago (${r.time || ''})`;
+          } else {
+            document.getElementById('proxReadingMain').innerText = `${r.laeq || '--'} dB`;
+            document.getElementById('proxReadingSub1').innerText = `Peak (LAFmax): ${r.lafmax || '--'} dB`;
+            document.getElementById('proxReadingSub2').innerText = `Recorded ${r.time_since || ''} ago`;
+          }
+        }
+      } else {
+        alertEl.classList.add('hidden');
+      }
+    }
+
+    window.loadData = async function() {
+      const refreshBtn = document.getElementById('refreshBtn');
+      const icon = document.getElementById('refreshIcon');
+      icon.classList.add('animate-spin');
+
+      try {
+        const response = await fetch('/api/monitors');
+        if (!response.ok) throw new Error('API request failed');
+        const json = await response.json();
+        window.allMonitors = json.data || [];
+        updateStats();
+        renderMap();
+        renderTable();
+        if (document.getElementById('dublin-mode-view').style.display === 'flex') {
+          renderDublinModeStations();
+        }
+      } catch (err) {
+        console.error('Error fetching data:', err);
+      } finally {
+        icon.classList.remove('animate-spin');
+      }
+    };
+
+    window.setFilter = function(filter) {
+      activeFilter = filter;
+      ['all', 'air', 'noise'].forEach(f => {
+        const btn = document.getElementById(`btnFilter${f.charAt(0).toUpperCase() + f.slice(1)}`);
+        if (f === filter) {
+          btn.className = "filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-cyan-600 text-white transition";
+        } else {
+          btn.className = "filter-btn px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition";
+        }
+      });
+      renderMap();
+      renderTable();
+    };
+
+    function getFilteredMonitors() {
+      if (activeFilter === 'all') return window.allMonitors;
+      return window.allMonitors.filter(m => m.monitor_type && m.monitor_type.category === activeFilter);
+    }
+
+    function updateStats() {
+      const airMonitors = window.allMonitors.filter(m => m.monitor_type && m.monitor_type.category === 'air');
+      const noiseMonitors = window.allMonitors.filter(m => m.monitor_type && m.monitor_type.category === 'noise');
+
+      document.getElementById('statAirCount').innerText = airMonitors.length;
+      document.getElementById('statNoiseCount').innerText = noiseMonitors.length;
+
+      let pm25Vals = [];
+      let no2Vals = [];
+
+      airMonitors.forEach(m => {
+        const r = m.latest_reading;
+        if (r) {
+          if (typeof r.pm2_5 === 'number' && r.pm2_5 > 0) pm25Vals.push(r.pm2_5);
+          if (typeof r.no2 === 'number' && r.no2 > 0) no2Vals.push(r.no2);
+        }
+      });
+
+      const avgPM25 = pm25Vals.length ? (pm25Vals.reduce((a, b) => a + b, 0) / pm25Vals.length).toFixed(1) : '--';
+      const avgNO2 = no2Vals.length ? (no2Vals.reduce((a, b) => a + b, 0) / no2Vals.length).toFixed(1) : '--';
+
+      document.getElementById('statAvgPM25').innerText = avgPM25 !== '--' ? `${avgPM25} µg/m³` : '--';
+      document.getElementById('statAvgNO2').innerText = avgNO2 !== '--' ? `${avgNO2} µg/m³` : '--';
+    }
+
+    function renderMap() {
+      if (!markersLayer) return;
+      markersLayer.clearLayers();
+      const monitors = getFilteredMonitors();
+      document.getElementById('stationCountBadge').innerText = `${monitors.length} stations`;
+
+      monitors.forEach(m => {
+        if (!m.latitude || !m.longitude) return;
+        const lat = parseFloat(m.latitude);
+        const lng = parseFloat(m.longitude);
+        if (isNaN(lat) || isNaN(lng)) return;
+
+        const color = getStatusColor(m);
+        const isAir = m.monitor_type && m.monitor_type.category === 'air';
+        const r = m.latest_reading;
+
+        const circle = L.circleMarker([lat, lng], {
+          radius: 8,
+          fillColor: color,
+          color: '#ffffff',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.85
+        });
+
+        let popupContent = `
+          <div class="text-slate-900 p-1 min-w-[190px]">
+            <h4 class="font-bold text-sm text-slate-900">${m.label || 'Station'}</h4>
+            <p class="text-xs text-slate-600 mb-2">${m.location || 'Dublin'}</p>
+            <div class="space-y-1 text-xs border-t border-slate-200 pt-2">
+              <div><strong>Type:</strong> <span class="capitalize">${m.monitor_type?.category || 'Unknown'}</span></div>
+        `;
+
+        if (r) {
+          if (isAir) {
+            if (r.pm2_5 != null) popupContent += `<div><strong>PM2.5:</strong> ${r.pm2_5.toFixed(1)} µg/m³</div>`;
+            if (r.no2 != null) popupContent += `<div><strong>NO₂:</strong> ${r.no2.toFixed(1)} µg/m³</div>`;
+          } else {
+            if (r.laeq != null) popupContent += `<div><strong>Noise (LAeq):</strong> ${r.laeq} dB</div>`;
+          }
+          popupContent += `<div class="text-[10px] text-slate-400 mt-1">Recorded: ${r.date || ''} ${r.time || ''}</div>`;
+        }
+
+        popupContent += `</div></div>`;
+        circle.bindPopup(popupContent);
+        markersLayer.addLayer(circle);
+      });
+    }
+
+    window.renderTable = function() {
+      const search = (document.getElementById('searchInput').value || '').toLowerCase();
+      const monitors = getFilteredMonitors().filter(m => {
+        const text = `${m.label || ''} ${m.location || ''} ${m.code || ''}`.toLowerCase();
+        return text.includes(search);
+      });
+
+      const tbody = document.getElementById('readingsTableBody');
+      if (monitors.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">No stations match the search filter.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = monitors.map(m => {
+        const isAir = m.monitor_type?.category === 'air';
+        const r = m.latest_reading;
+
+        let primaryMetric = '<span class="text-slate-500">No reading</span>';
+        let otherMetrics = '-';
+
+        if (r) {
+          if (isAir) {
+            if (r.pm2_5 != null) primaryMetric = `<span class="text-emerald-400 font-semibold">${r.pm2_5.toFixed(1)} <span class="text-[10px] text-slate-400">PM2.5</span></span>`;
+            else if (r.no2 != null) primaryMetric = `<span class="text-amber-400 font-semibold">${r.no2.toFixed(1)} <span class="text-[10px] text-slate-400">NO₂</span></span>`;
+
+            const others = [];
+            if (r.pm10 != null && r.pm2_5 != null) others.push(`PM10: ${r.pm10.toFixed(1)}`);
+            if (r.no2 != null && r.pm2_5 != null) others.push(`NO₂: ${r.no2.toFixed(1)}`);
+            otherMetrics = others.join(' | ') || '-';
+          } else {
+            if (r.laeq != null) primaryMetric = `<span class="text-indigo-400 font-semibold">${r.laeq} <span class="text-[10px] text-slate-400">dB (LAeq)</span></span>`;
+            if (r.lafmax != null) otherMetrics = `Peak: ${r.lafmax} dB`;
+          }
+        }
+
+        const statusColor = getStatusColor(m);
+        const statusLabel = r ? (r.status || 'Active') : 'Offline';
+
+        return `
+          <tr class="hover:bg-slate-800/40 transition">
+            <td class="px-4 py-3">
+              <div class="font-bold text-white">${m.label || 'Station'}</div>
+              <div class="text-[11px] text-slate-400">${m.location || 'Dublin'}</div>
+            </td>
+            <td class="px-4 py-3 capitalize">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${isAir ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-800/60' : 'bg-indigo-950/80 text-indigo-300 border border-indigo-800/60'}">
+                ${m.monitor_type?.category || 'General'}
+              </span>
+            </td>
+            <td class="px-4 py-3">${primaryMetric}</td>
+            <td class="px-4 py-3 text-slate-400 text-[11px]">${otherMetrics}</td>
+            <td class="px-4 py-3 text-[11px] text-slate-400">
+              ${r ? `${r.date || ''} ${r.time || ''} <span class="block text-slate-500 text-[10px]">(${r.time_since || ''} ago)</span>` : '-'}
+            </td>
+            <td class="px-4 py-3">
+              <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium" style="color: ${statusColor}">
+                <span class="w-2 h-2 rounded-full" style="background-color: ${statusColor}"></span>
+                <span class="capitalize">${statusLabel}</span>
+              </span>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    };
+  </script>
+</body>
+</html>
