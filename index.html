@@ -852,6 +852,8 @@
         hitTestSource = null; // stop hit testing
         document.getElementById('xr-status-text').textContent = 'Walk near a pillar — it will highlight and show live readings.';
         audio.playChime();
+        // Auto-select nearest pillar so the card is visible immediately after placement
+        if (pillarMeshes.length > 0) selectPillar(pillarMeshes[0]);
         return;
       }
 
@@ -866,8 +868,9 @@
       }
     }
 
-    // Proximity threshold: 1.5m from a pillar triggers auto-card in AR
-    const PROXIMITY_THRESHOLD = 1.5;
+    // Proximity threshold: 3m from a pillar triggers auto-card in AR
+    // (WebXR camera world-space can span several metres from the anchor point)
+    const PROXIMITY_THRESHOLD = 3.0;
     const _camWorldPos = new THREE.Vector3();
     const _pillarWorldPos = new THREE.Vector3();
     let lastProximityPillar = null;
