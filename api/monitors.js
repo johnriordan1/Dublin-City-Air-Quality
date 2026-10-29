@@ -20,6 +20,8 @@ export default async function handler(req) {
     }
 
     const data = await upstream.json();
+    const monitors = (Array.isArray(data) ? data : (data.data || []))
+      .filter(m => m.monitor_type?.category !== 'noise');
 
     return new Response(JSON.stringify({
       status: 'success',
@@ -27,8 +29,8 @@ export default async function handler(req) {
       data_gov_ie_url: 'https://data.gov.ie/dataset/sonitus',
       smart_dublin_url: 'https://data.smartdublin.ie/dataset/sonitus',
       portal_url: 'https://dublincityairandnoise.ie/',
-      total_monitors: Array.isArray(data) ? data.length : 0,
-      data: data
+      total_monitors: monitors.length,
+      data: monitors
     }), {
       status: 200,
       headers: {
