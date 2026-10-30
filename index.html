@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -134,18 +134,9 @@
 
         <!-- Filter Controls -->
         <div class="flex flex-wrap items-center gap-2">
-          <!-- Tracking Radius Drop-Down -->
-          <div id="radiusControl" class="hidden items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1 text-xs">
-            <label for="trackingRadius" class="text-slate-400 font-medium">Radius:</label>
-            <select id="trackingRadius" onchange="onTrackingRadiusChange()" class="bg-transparent text-cyan-300 font-semibold focus:outline-none cursor-pointer">
-              <option value="1000" class="bg-slate-900 text-slate-100">1 km</option>
-              <option value="3000" selected class="bg-slate-900 text-slate-100">3 km</option>
-              <option value="5000" class="bg-slate-900 text-slate-100">5 km</option>
-            </select>
-          </div>
 
-          <button onclick="toggleHideOffline()" id="btnToggleOffline" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/50 transition flex items-center gap-1.5" title="Toggle visibility of offline stations">
-            <span id="offlineIndicatorDot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <button onclick="toggleHideOffline()" id="btnToggleOffline" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 transition flex items-center gap-1.5" title="Toggle visibility of offline stations">
+            <span id="offlineIndicatorDot" class="hidden w-2 h-2 rounded-full bg-emerald-400"></span>
             <span id="offlineBtnText">Offline: Hidden</span>
           </button>
 
@@ -158,6 +149,159 @@
       <!-- Legend -->
       <div id="mapLegend" class="flex flex-wrap items-center gap-y-2 gap-x-6 text-xs text-slate-400 pt-1">
         <!-- Rendered dynamically based on active filter -->
+      </div>
+
+      <!-- Collapsible AQIH Bands Information Card -->
+      <div id="aqihBandsModal" class="hidden bg-slate-900/95 rounded-xl p-4 sm:p-5 border border-cyan-500/40 shadow-2xl space-y-4 text-xs transition-all">
+        <div class="flex items-start justify-between pb-3 border-b border-slate-800 gap-3">
+          <div class="flex items-start gap-2 min-w-0">
+            <span class="flex items-center justify-center w-5 h-5 rounded-full bg-cyan-900/80 text-cyan-300 text-xs font-serif italic shrink-0 mt-0.5">i</span>
+            <div class="min-w-0">
+              <h3 class="text-sm sm:text-base font-semibold text-white leading-tight">Air Quality Index for Health (AQIH) Bands</h3>
+              <a href="https://dublincityairandnoise.ie/information/air-quality-index" target="_blank" rel="noreferrer" class="sm:hidden mt-1.5 text-cyan-400 hover:text-cyan-300 underline text-xs font-medium inline-flex items-center gap-1">
+                <span>dublincityairandnoise.ie</span>
+                <span>&nearr;</span>
+              </a>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 shrink-0">
+            <a href="https://dublincityairandnoise.ie/information/air-quality-index" target="_blank" rel="noreferrer" class="hidden sm:inline-flex text-cyan-400 hover:text-cyan-300 underline text-xs font-medium items-center gap-1">
+              <span>dublincityairandnoise.ie</span>
+              <span>&nearr;</span>
+            </a>
+            <button type="button" onclick="toggleAqihBandsModal()" class="text-slate-400 hover:text-white text-lg leading-none px-1.5 py-0.5 rounded hover:bg-slate-800 transition" title="Close info">&times;</button>
+          </div>
+        </div>
+
+        <p class="text-slate-300 leading-relaxed text-xs">
+          The EPA Air Quality Index for Health (AQIH) categorises air quality into 10 index levels across four bands based on rolling concentration thresholds for key pollutants:
+        </p>
+
+        <div class="space-y-1.5">
+          <div class="text-slate-200 font-semibold text-xs">Pollutant Concentration Thresholds:</div>
+          <div class="overflow-x-auto rounded-lg border border-slate-800">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead class="bg-slate-950 text-slate-300 uppercase font-semibold text-[11px] border-b border-slate-800">
+                <tr>
+                  <th class="px-2.5 py-2 whitespace-nowrap">Band</th>
+                  <th class="px-2.5 py-2 text-center">Index</th>
+                  <th class="px-2.5 py-2">Ozone (O₃)<br><span class="text-[10px] text-slate-400 font-normal lowercase">8-hr mean (&micro;g/m&sup3;)</span></th>
+                  <th class="px-2.5 py-2">Nitrogen Dioxide (NO₂)<br><span class="text-[10px] text-slate-400 font-normal lowercase">1-hr mean (&micro;g/m&sup3;)</span></th>
+                  <th class="px-2.5 py-2">PM₂.₅<br><span class="text-[10px] text-slate-400 font-normal lowercase">24-hr mean (&micro;g/m&sup3;)</span></th>
+                  <th class="px-2.5 py-2">PM₁₀<br><span class="text-[10px] text-slate-400 font-normal lowercase">24-hr mean (&micro;g/m&sup3;)</span></th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/80 text-slate-300">
+                <tr class="bg-emerald-950/20 hover:bg-emerald-950/30">
+                  <td class="px-2.5 py-1.5 font-bold text-emerald-400" rowspan="3">Good</td>
+                  <td class="px-2.5 py-1.5 text-center font-bold text-emerald-300">1</td>
+                  <td class="px-2.5 py-1.5">0 – 33</td>
+                  <td class="px-2.5 py-1.5">0 – 67</td>
+                  <td class="px-2.5 py-1.5">0 – 11</td>
+                  <td class="px-2.5 py-1.5">0 – 16</td>
+                </tr>
+                <tr class="bg-emerald-950/20 hover:bg-emerald-950/30">
+                  <td class="px-2.5 py-1.5 text-center font-bold text-emerald-300">2</td>
+                  <td class="px-2.5 py-1.5">34 – 66</td>
+                  <td class="px-2.5 py-1.5">68 – 134</td>
+                  <td class="px-2.5 py-1.5">12 – 23</td>
+                  <td class="px-2.5 py-1.5">17 – 33</td>
+                </tr>
+                <tr class="bg-emerald-950/20 hover:bg-emerald-950/30">
+                  <td class="px-2.5 py-1.5 text-center font-bold text-emerald-300">3</td>
+                  <td class="px-2.5 py-1.5">67 – 100</td>
+                  <td class="px-2.5 py-1.5">135 – 200</td>
+                  <td class="px-2.5 py-1.5">24 – 35</td>
+                  <td class="px-2.5 py-1.5">34 – 50</td>
+                </tr>
+
+                <tr class="bg-amber-950/20 hover:bg-amber-950/30">
+                  <td class="px-2.5 py-1.5 font-bold text-amber-400" rowspan="3">Moderate</td>
+                  <td class="px-2.5 py-1.5 text-center font-bold text-amber-300">4</td>
+                  <td class="px-2.5 py-1.5">101 – 120</td>
+                  <td class="px-2.5 py-1.5">201 – 267</td>
+                  <td class="px-2.5 py-1.5">36 – 41</td>
+                  <td class="px-2.5 py-1.5">51 – 58</td>
+                </tr>
+                <tr class="bg-amber-950/20 hover:bg-amber-950/30">
+                  <td class="px-2.5 py-1.5 text-center font-bold text-amber-300">5</td>
+                  <td class="px-2.5 py-1.5">121 – 140</td>
+                  <td class="px-2.5 py-1.5">268 – 334</td>
+                  <td class="px-2.5 py-1.5">42 – 47</td>
+                  <td class="px-2.5 py-1.5">59 – 66</td>
+                </tr>
+                <tr class="bg-amber-950/20 hover:bg-amber-950/30">
+                  <td class="px-2.5 py-1.5 text-center font-bold text-amber-300">6</td>
+                  <td class="px-2.5 py-1.5">141 – 160</td>
+                  <td class="px-2.5 py-1.5">335 – 400</td>
+                  <td class="px-2.5 py-1.5">48 – 53</td>
+                  <td class="px-2.5 py-1.5">67 – 75</td>
+                </tr>
+
+                <tr class="bg-rose-950/20 hover:bg-rose-950/30">
+                  <td class="px-2.5 py-1.5 font-bold text-rose-400" rowspan="3">Poor</td>
+                  <td class="px-2.5 py-1.5 text-center font-bold text-rose-300">7</td>
+                  <td class="px-2.5 py-1.5">161 – 187</td>
+                  <td class="px-2.5 py-1.5">401 – 467</td>
+                  <td class="px-2.5 py-1.5">54 – 58</td>
+                  <td class="px-2.5 py-1.5">76 – 83</td>
+                </tr>
+                <tr class="bg-rose-950/20 hover:bg-rose-950/30">
+                  <td class="px-2.5 py-1.5 text-center font-bold text-rose-300">8</td>
+                  <td class="px-2.5 py-1.5">188 – 213</td>
+                  <td class="px-2.5 py-1.5">468 – 534</td>
+                  <td class="px-2.5 py-1.5">59 – 64</td>
+                  <td class="px-2.5 py-1.5">84 – 91</td>
+                </tr>
+                <tr class="bg-rose-950/20 hover:bg-rose-950/30">
+                  <td class="px-2.5 py-1.5 text-center font-bold text-rose-300">9</td>
+                  <td class="px-2.5 py-1.5">214 – 240</td>
+                  <td class="px-2.5 py-1.5">535 – 600</td>
+                  <td class="px-2.5 py-1.5">65 – 70</td>
+                  <td class="px-2.5 py-1.5">92 – 100</td>
+                </tr>
+
+                <tr class="bg-purple-950/25 hover:bg-purple-950/35">
+                  <td class="px-2.5 py-1.5 font-bold text-purple-400">Very Poor</td>
+                  <td class="px-2.5 py-1.5 text-center font-bold text-purple-300">10</td>
+                  <td class="px-2.5 py-1.5">241 or more</td>
+                  <td class="px-2.5 py-1.5">601 or more</td>
+                  <td class="px-2.5 py-1.5">71 or more</td>
+                  <td class="px-2.5 py-1.5">101 or more</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="space-y-2 pt-2 border-t border-slate-800">
+          <div class="text-slate-200 font-semibold text-xs">Associated Health Advice:</div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+            <div class="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              <div class="font-bold text-emerald-400 mb-1">Good (1–3)</div>
+              <div class="text-slate-300"><strong class="text-slate-400 font-medium">General:</strong> Enjoy your usual outdoor activities.</div>
+              <div class="text-slate-300 mt-1"><strong class="text-slate-400 font-medium">At-Risk:</strong> Enjoy your usual outdoor activities.</div>
+            </div>
+            <div class="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              <div class="font-bold text-amber-400 mb-1">Moderate (4–6)</div>
+              <div class="text-slate-300"><strong class="text-slate-400 font-medium">General:</strong> Enjoy your usual outdoor activities.</div>
+              <div class="text-slate-300 mt-1"><strong class="text-slate-400 font-medium">At-Risk:</strong> Adults and children with lung problems, and adults with heart problems, who experience symptoms, should consider reducing strenuous physical activity, particularly outdoors.</div>
+            </div>
+            <div class="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              <div class="font-bold text-rose-400 mb-1">Poor (7–9)</div>
+              <div class="text-slate-300"><strong class="text-slate-400 font-medium">General:</strong> Anyone experiencing discomfort such as sore eyes, cough or sore throat should consider reducing activity, particularly outdoors.</div>
+              <div class="text-slate-300 mt-1"><strong class="text-slate-400 font-medium">At-Risk:</strong> Adults and children with lung problems, and adults with heart problems, should reduce strenuous physical activity, particularly outdoors, and particularly if they experience symptoms. People with asthma may need their reliever inhaler more often; older people should reduce physical exertion.</div>
+            </div>
+            <div class="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80">
+              <div class="font-bold text-purple-400 mb-1">Very Poor (10)</div>
+              <div class="text-slate-300"><strong class="text-slate-400 font-medium">General:</strong> Reduce physical exertion, particularly outdoors, especially if experiencing symptoms like cough or sore throat.</div>
+              <div class="text-slate-300 mt-1"><strong class="text-slate-400 font-medium">At-Risk:</strong> Adults and children with lung problems, adults with heart problems, and older people should avoid strenuous physical activity. People with asthma may need their reliever inhaler more often.</div>
+            </div>
+          </div>
+          <div class="flex justify-end pt-2">
+            <button type="button" onclick="toggleAqihBandsModal()" class="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition">Close</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -194,8 +338,64 @@
 
   </main>
 
-  <footer class="border-t border-slate-800 py-4 text-center text-xs text-slate-500">
-    Official Irish Open Data: <a href="https://data.gov.ie/dataset/sonitus" target="_blank" class="text-cyan-400 hover:underline">data.gov.ie/dataset/sonitus</a> | Dublin City Council & Smart Dublin Open Data.
+  <!-- Privacy Policy Modal -->
+  <div id="privacyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="privacyModalTitle">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closePrivacyModal()"></div>
+    <div class="relative bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+        <h2 id="privacyModalTitle" class="text-base font-semibold text-white">Privacy Policy</h2>
+        <button onclick="closePrivacyModal()" class="text-slate-400 hover:text-white text-xl leading-none px-2 py-1 rounded hover:bg-slate-800 transition" aria-label="Close">&times;</button>
+      </div>
+      <div class="overflow-y-auto px-5 py-4 text-sm text-slate-300 space-y-4 leading-relaxed">
+        <p class="text-xs text-slate-500">Last updated: October 2026</p>
+        <section>
+          <h3 class="font-semibold text-slate-100 mb-1">Overview</h3>
+          <p>Dublin Air Quality Monitor is a free, open-source tool that displays real-time air quality data from publicly available Irish EPA and Dublin City Council monitoring stations. This policy explains what information, if any, is collected when you use the app.</p>
+        </section>
+        <section>
+          <h3 class="font-semibold text-slate-100 mb-1">Data We Do Not Collect</h3>
+          <p>This app does <strong class="text-slate-200">not</strong> collect, store, or transmit any personal data. There are no user accounts, cookies, analytics trackers, or advertising networks.</p>
+        </section>
+        <section>
+          <h3 class="font-semibold text-slate-100 mb-1">Geolocation</h3>
+          <p>If you enable the optional location feature, your coordinates are used solely to display your position on the map within your browser. Your location is never sent to any server or stored beyond your current session.</p>
+        </section>
+        <section>
+          <h3 class="font-semibold text-slate-100 mb-1">Third-Party Data Sources</h3>
+          <p>Air quality readings are fetched from the Irish Open Data API (<a href="https://data.gov.ie/dataset/sonitus" target="_blank" rel="noreferrer" class="text-cyan-400 hover:underline">data.gov.ie</a>). Map tiles are served by <a href="https://www.openstreetmap.org" target="_blank" rel="noreferrer" class="text-cyan-400 hover:underline">OpenStreetMap</a>. Please refer to their respective privacy policies for details on any data they may collect.</p>
+        </section>
+        <section>
+          <h3 class="font-semibold text-slate-100 mb-1">Contact</h3>
+          <p>Questions or concerns? Visit <a href="https://john-riordan.ie" target="_blank" rel="noreferrer" class="text-cyan-400 hover:underline">john-riordan.ie</a>.</p>
+        </section>
+      </div>
+      <div class="px-5 py-3 border-t border-slate-800 flex justify-end">
+        <button onclick="closePrivacyModal()" class="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="border-t border-slate-800 py-5 text-center text-xs text-slate-500">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-x-5 gap-y-2 flex-wrap">
+      <span>Data: <a href="https://data.gov.ie/dataset/sonitus" target="_blank" rel="noreferrer" class="text-cyan-400 hover:underline">data.gov.ie/dataset/sonitus</a></span>
+      <span class="hidden sm:inline text-slate-700">|</span>
+      <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer" class="inline-flex items-center gap-1.5 text-slate-400 hover:text-slate-200 transition" title="Creative Commons Attribution 4.0 International">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm-1.5-8.5c0 .827.673 1.5 1.5 1.5.545 0 1.02-.293 1.285-.728l1.44.832A3.498 3.498 0 0 1 12 15a3.5 3.5 0 0 1 0-7 3.498 3.498 0 0 1 2.725 1.396l-1.44.832A1.5 1.5 0 0 0 12 9.5c-.827 0-1.5.673-1.5 1.5z"/></svg>
+        CC BY 4.0
+      </a>
+      <span class="hidden sm:inline text-slate-700">|</span>
+      <a href="https://john-riordan.ie" target="_blank" rel="noreferrer" class="text-slate-400 hover:text-slate-200 transition">john-riordan.ie</a>
+      <span class="hidden sm:inline text-slate-700">|</span>
+      <a href="https://github.com/johnriordan1/Dublin-City-Air-Quality" target="_blank" rel="noreferrer" class="inline-flex items-center gap-1.5 text-slate-400 hover:text-slate-200 transition" title="View on GitHub">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/></svg>
+        GitHub
+      </a>
+      <span class="hidden sm:inline text-slate-700">|</span>
+      <button onclick="openPrivacyModal()" class="text-slate-400 hover:text-slate-200 transition cursor-pointer bg-transparent border-0 p-0 text-xs">Privacy Policy</button>
+    </div>
+    <p class="mt-3 max-w-2xl mx-auto text-slate-400 leading-relaxed">
+      <strong class="text-slate-300">Disclaimer:</strong> This app is for informational purposes only. Live data is subject to transmission latency, system updates, and API availability. The developer accepts no liability for data inaccuracies, delayed updates, or service interruptions.
+    </p>
   </footer>
 
   <!-- Web Audio Synthesizer -->
@@ -257,7 +457,6 @@
     window.map = null;
     let markersLayer = null;
     let userMarker = null;
-    let userCircle = null;
     let activeFilter = 'all';
     let hideOffline = true;
     let geoWatchId = null;
@@ -347,6 +546,15 @@
       return r && r.status ? (r.status.charAt(0).toUpperCase() + r.status.slice(1)) : 'Active';
     }
 
+    function toggleAqihBandsModal() {
+      const modal = document.getElementById('aqihBandsModal');
+      if (!modal) return;
+      modal.classList.toggle('hidden');
+      if (!modal.classList.contains('hidden')) {
+        modal.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
     function renderLegend() {
       const el = document.getElementById('mapLegend');
       if (!el) return;
@@ -374,6 +582,9 @@
               </span>
             `).join('')}
             <span class="text-xs text-slate-400 ml-0.5 sm:ml-1.5">(1–3 Good, 4–6 Moderate, 7–9 Poor, 10 Very Poor)</span>
+            <button type="button" onclick="toggleAqihBandsModal()" title="View AQIH bands and thresholds info" aria-label="AQIH Bands Information" class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-700/80 hover:bg-cyan-900/80 border border-slate-600 hover:border-cyan-500 text-cyan-300 font-serif italic text-xs font-semibold shadow-sm transition-colors focus:outline-none focus:ring-1 focus:ring-cyan-400 ml-1">
+              i
+            </button>
           </div>
         </div>
       `;
@@ -402,18 +613,6 @@
       markersLayer = L.layerGroup().addTo(window.map);
     }
 
-    window.onTrackingRadiusChange = function() {
-      const radiusMeters = parseInt(document.getElementById('trackingRadius').value, 10);
-
-      if (userCircle) {
-        userCircle.setRadius(radiusMeters);
-      }
-
-      if (isTracking && currentUserLat != null && currentUserLng != null) {
-        updateLocationButtonUI(true);
-      }
-    };
-
     function updateLocationButtonUI(active) {
       const btn = document.getElementById('geoBtn');
       const text = document.getElementById('geoBtnText');
@@ -428,21 +627,14 @@
     }
 
     window.toggleGeolocation = function() {
-      const radiusControl = document.getElementById('radiusControl');
       if (isTracking) {
         if (geoWatchId) navigator.geolocation.clearWatch(geoWatchId);
         isTracking = false;
         currentUserLat = null;
         currentUserLng = null;
         updateLocationButtonUI(false);
-        if (radiusControl) {
-          radiusControl.classList.add('hidden');
-          radiusControl.classList.remove('flex');
-        }
         if (userMarker) window.map.removeLayer(userMarker);
-        if (userCircle) window.map.removeLayer(userCircle);
         userMarker = null;
-        userCircle = null;
         return;
       }
 
@@ -458,10 +650,6 @@
         err => {
           isTracking = false;
           updateLocationButtonUI(false);
-          if (radiusControl) {
-            radiusControl.classList.add('hidden');
-            radiusControl.classList.remove('flex');
-          }
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
       );
@@ -471,37 +659,19 @@
     function onGeoSuccess(pos) {
       currentUserLat = pos.coords.latitude;
       currentUserLng = pos.coords.longitude;
-      const circleRadius = parseInt(document.getElementById('trackingRadius').value, 10);
-      const radiusControl = document.getElementById('radiusControl');
-      if (radiusControl) {
-        radiusControl.classList.remove('hidden');
-        radiusControl.classList.add('flex');
-      }
-
       updateLocationButtonUI(true);
 
       if (!userMarker) {
         userMarker = L.circleMarker([currentUserLat, currentUserLng], {
-          radius: 18,
+          radius: 9,
           fillColor: '#06b6d4',
           color: '#ffffff',
-          weight: 3,
+          weight: 2,
           fillOpacity: 1
         }).addTo(window.map).bindPopup('<strong>Your Location</strong>');
-
-        userCircle = L.circle([currentUserLat, currentUserLng], {
-          radius: circleRadius,
-          color: '#06b6d4',
-          weight: 1,
-          fillColor: '#06b6d4',
-          fillOpacity: 0.1
-        }).addTo(window.map);
-
         window.map.setView([currentUserLat, currentUserLng], 14);
       } else {
         userMarker.setLatLng([currentUserLat, currentUserLng]);
-        userCircle.setLatLng([currentUserLat, currentUserLng]);
-        userCircle.setRadius(circleRadius);
       }
     }
 
@@ -543,8 +713,8 @@
       if (btnText && dot && btn) {
         if (hideOffline) {
           btnText.innerText = 'Offline: Hidden';
-          dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
-          btn.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/50 transition flex items-center gap-1.5';
+          dot.className = 'hidden w-2 h-2 rounded-full bg-emerald-400';
+          btn.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 transition flex items-center gap-1.5';
         } else {
           btnText.innerText = 'Offline: Visible';
           dot.className = 'w-2 h-2 rounded-full bg-slate-500';
@@ -884,6 +1054,19 @@
       if (tbody) tbody.innerHTML = desktopRows;
       if (mobileList) mobileList.innerHTML = mobileCards;
     };
+  </script>
+  <script>
+    function openPrivacyModal() {
+      document.getElementById('privacyModal').classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+    function closePrivacyModal() {
+      document.getElementById('privacyModal').classList.add('hidden');
+      document.body.style.overflow = '';
+    }
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closePrivacyModal();
+    });
   </script>
 </body>
 </html>
